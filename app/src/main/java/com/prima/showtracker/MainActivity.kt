@@ -5,11 +5,8 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.ScrollableColumn
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +43,19 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.sql.Time
 import androidx.activity.viewModels
+import androidx.compose.foundation.*
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.AmbientContext
+import androidx.compose.ui.platform.AmbientDensity
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
 import java.io.IOException
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -63,11 +73,13 @@ import java.time.ZoneOffset
 // - edit page [done]
 // - update existing record [done]
 // - removing from db [done]
+// - better flow and suspension
+// - error handling
 // - make it look cool
-
+// - ability to change status
 
 enum class TvShowStatus {
-    WATCHING, PAUSED, ENDED,
+    WATCHING, PAUSED, ENDED, MOVIE
 }
 
 @Entity(tableName = "tv_shows")
@@ -87,7 +99,7 @@ data class TvShow(
 @Dao
 interface TvShowDao {
     @Query("SELECT * FROM tv_shows")
-    suspend fun getAll(): List<TvShow>
+    fun getAll(): Flow<List<TvShow>>
 
     @Query("SELECT * FROM tv_shows WHERE id = :tvShowId")
     suspend fun findBy(tvShowId: Int): TvShow?
@@ -133,7 +145,7 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 class TvShowRepository(private val tvShowDao: TvShowDao){
-    suspend fun getAll(): List<TvShow>{
+    fun getAll(): Flow<List<TvShow>>{
         return tvShowDao.getAll()
     }
 
@@ -160,8 +172,12 @@ class AppViewModel(application: Application): AndroidViewModel(application){
     private val database: AppDatabase
     private val repository: TvShowRepository
 
-    var tvShows: MutableState<List<TvShow>> = mutableStateOf(listOf())
-        private set
+//    var tvShows: MutableState<List<TvShow>> = mutableStateOf(listOf())
+//        private set
+
+//    var tvShows = MutableStateFlow<List<TvShow>>(listOf())
+    lateinit var tvShows: Flow<List<TvShow>>
+
     var tvShow: MutableState<TvShow?> = mutableStateOf(null)
         private set
 
@@ -170,12 +186,15 @@ class AppViewModel(application: Application): AndroidViewModel(application){
         repository = TvShowRepository(database.tvShowDao())
 
         viewModelScope.launch {
-            tvShows.value = repository.getAll()
+            tvShows = repository.getAll()
         }
     }
 
     suspend fun add(tvShow: TvShow){
-        repository.add(tvShow = tvShow)
+        viewModelScope.launch(Dispatchers.IO){
+            repository.add(tvShow = tvShow)
+//            tvShows.value = repository.getAll()
+        }
     }
 
     suspend fun findBy(tvShowId: Int): Job{
@@ -188,7 +207,7 @@ class AppViewModel(application: Application): AndroidViewModel(application){
     suspend fun remove(tvShow: TvShow){
         viewModelScope.launch {
             repository.remove(tvShow)
-            tvShows.value = repository.getAll()
+//            tvShows.value = repository.getAll()
         }
     }
 
@@ -196,7 +215,7 @@ class AppViewModel(application: Application): AndroidViewModel(application){
         viewModelScope.launch {
             Log.d("parser", "${tvShow.seasonTracker} / ${tvShow.id}")
             repository.update(tvShow)
-            tvShows.value = repository.getAll()
+//            tvShows.value = repository.getAll()
         }
     }
 }
@@ -208,7 +227,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ShowTrackerTheme(darkTheme = false) {
+            ShowTrackerTheme(darkTheme = true) {
                 // A surface container using the 'background' color from the theme
                 Surface(color = MaterialTheme.colors.background) {
                     App(appViewModel)
@@ -241,8 +260,8 @@ fun App(appViewModel: AppViewModel){
 
 @Composable
 fun PageShows(navController: NavController, appViewModel: AppViewModel){
-    val c = ButtonDefaults.buttonColors(backgroundColor = Color.Red)
-    val tvShows = appViewModel.tvShows.value
+    val c = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.secondary)
+    val tvShows = appViewModel.tvShows.collectAsState(initial = listOf())
 
     Scaffold(
         topBar = {
@@ -262,7 +281,7 @@ fun PageShows(navController: NavController, appViewModel: AppViewModel){
         val modifier = Modifier.padding(it)
 
         LazyColumn{
-            items(tvShows){
+            items(tvShows.value){
                 ShowItem(modifier = modifier, tvShow = it, onEdit = { navController.navigate(PAGES.SHOWS_EDIT + "/${it.id}" )})
             }
         }
@@ -277,16 +296,15 @@ fun ShowItem(modifier: Modifier, tvShow: TvShow, onEdit: () -> Unit){
 
         CoilImage(
             data = tvShow.imdbPosterUrl,
-            modifier = Modifier.preferredHeight(200.dp).clip(RoundedCornerShape(20.dp)),
+            modifier = Modifier.preferredHeight(150.dp).clip(RoundedCornerShape(10.dp)),
             alignment = Alignment.TopStart
         )
 
         Spacer(modifier = Modifier.width(20.dp))
 
         Column(){
-            Text(tvShow.title.toUpperCase(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("${tvShow.id}")
-
+            Text(tvShow.title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(tvShow.genres ?: "", style = MaterialTheme.typography.subtitle1)
             Spacer(modifier = Modifier.height(10.dp))
 
             Text("S: ${tvShow.seasonTracker}")
@@ -305,36 +323,44 @@ fun ShowItem(modifier: Modifier, tvShow: TvShow, onEdit: () -> Unit){
 fun PageShowsCreate(navController: NavController, appViewModel: AppViewModel){
     var imdbUrlLink by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
-    var successfullCreate by remember { mutableStateOf(false) }
+    var isProcessing by remember { mutableStateOf(false) }
+
+    val context = AmbientContext.current
+    val toast = Toast.makeText(context, "Failed to process", Toast.LENGTH_SHORT)
 
     val onbtnclick: () -> Unit = {
-        successfullCreate = false
-        val job = coroutineScope.launch(Dispatchers.IO) {
+        coroutineScope.launch(Dispatchers.Main){
+            isProcessing = true
             val tvShow = parseIMDBLink(imdbUrlLink)
-            if(tvShow != null) {
-                appViewModel.add(tvShow)
-                successfullCreate = true
+            if (tvShow == null) {
+                isProcessing = false
+                toast.show()
+                return@launch
             }
-        }
 
-        job.invokeOnCompletion {
-            Log.d("parser", "job done")
-            coroutineScope.launch(Dispatchers.Main) { navController.popBackStack() }
+            appViewModel.add(tvShow)
+            navController.popBackStack()
         }
     }
 
     Scaffold(){
-        Column(modifier = Modifier.padding(it).padding(10.dp)){
-            Text("IMDB Link")
+        if(isProcessing){
+            Text("Processing")
+        } else {
 
-            TextField(value = imdbUrlLink, onValueChange = { imdbUrlLink = it }, placeholder = {
-                Text(
-                    "Insert IMDB link here"
-                )
-            })
+            Column(modifier = Modifier.padding(it).padding(10.dp)) {
 
-            Button(onClick = onbtnclick) {
-                Text("Add")
+                Text("IMDB Link")
+
+                TextField(value = imdbUrlLink, onValueChange = { imdbUrlLink = it }, placeholder = {
+                    Text(
+                        "Insert IMDB link here"
+                    )
+                })
+
+                Button(onClick = onbtnclick) {
+                    Text("Add")
+                }
             }
         }
     }
@@ -342,11 +368,16 @@ fun PageShowsCreate(navController: NavController, appViewModel: AppViewModel){
 }
 
 @Composable
-fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvShowId: String){
+fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvShowId: String) {
     val coroutineScope = rememberCoroutineScope()
     val tvShow = appViewModel.tvShow
-    val seasonTracker: MutableState<String> = remember {mutableStateOf(tvShow.value?.seasonTracker?.toString() ?: "0") }
-    val episodeTracker: MutableState<String> = remember {mutableStateOf(tvShow.value?.episodeTracker?.toString() ?: "0") }
+    val seasonTracker: MutableState<String> = remember {
+        mutableStateOf(tvShow.value?.seasonTracker?.toString() ?: "0")
+    }
+    val episodeTracker: MutableState<String> = remember {
+        mutableStateOf(tvShow.value?.episodeTracker?.toString() ?: "0")
+    }
+    val isSaving = remember { mutableStateOf(false) }
 
     LaunchedEffect(subject = tvShowId, block = {
         appViewModel.findBy(tvShowId = tvShowId.toInt()).invokeOnCompletion {
@@ -359,21 +390,21 @@ fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvSh
     })
 
 
-
     val onRemove: () -> Unit = {
-            var job = coroutineScope.launch(Dispatchers.IO) {
-                appViewModel.remove(tvShow.value!!)
+        var job = coroutineScope.launch(Dispatchers.IO) {
+            appViewModel.remove(tvShow.value!!)
+        }
+        job.invokeOnCompletion {
+            coroutineScope.launch(Dispatchers.Main) {
+                navController.popBackStack()
             }
-            job.invokeOnCompletion {
-                coroutineScope.launch(Dispatchers.Main) {
-                    navController.popBackStack()
-                }
-            }
+        }
 
     }
 
     val onSave: () -> Unit = {
-        if(tvShow.value != null) {
+        isSaving.value = true
+        if (tvShow.value != null) {
             var job = coroutineScope.launch(Dispatchers.IO) {
                 val x = tvShow.value!!
                 val _tvShow = TvShow(
@@ -398,62 +429,118 @@ fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvSh
         }
     }
 
-    if(tvShow.value == null){
+    if (tvShow.value == null) {
         Text("loading")
+    } else if (isSaving.value) {
+        Text("Saving")
     } else {
         val x = tvShow.value!!
+        val density = AmbientDensity.current.density
+        val linear = Brush.verticalGradient(
+            if (MaterialTheme.colors.isLight) listOf(Color.Transparent, Color.White) else listOf(Color.Transparent, Color.Black),
+            startY = 150f * density
+        )
 
-        Column() {
-            Text(x.title)
-
-            Button(onClick = onRemove) {
-                Text("Remove")
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize(1f)) {
+            Box(modifier = Modifier.fillMaxWidth(1f).height(250.dp)) {
+                CoilImage(data = x.imdbPosterUrl, modifier = Modifier.fillMaxHeight(1f).fillMaxWidth(1f))
+                Box(modifier = Modifier.background(linear).fillMaxSize(1f))
             }
 
-            Spacer(modifier = Modifier.preferredHeight(20.dp))
+            Text(x.title, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+            Text(x.genres ?: "", style = MaterialTheme.typography.subtitle1)
 
-            Text("Season")
-            TextField(
-                value = seasonTracker.value,
-                onValueChange = { seasonTracker.value = it }
-            )
+            Spacer(modifier = Modifier.preferredHeight(30.dp))
 
-            Text("Episode")
-            TextField(
-                value = episodeTracker.value,
-                onValueChange = { episodeTracker.value = it }
-            )
-
-            Button(onClick = onSave) {
-                Text("Save")
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.width(250.dp)
+            ) {
+                Text("Season", modifier = Modifier.fillMaxWidth(0.4f))
+                TextField(
+                    value = seasonTracker.value,
+                    onValueChange = { seasonTracker.value = it },
+                    backgroundColor = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth(0.5f)
+                )
             }
 
+            Spacer(modifier = Modifier.preferredHeight(10.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.width(250.dp)
+            ) {
+                Text("Episode", modifier = Modifier.fillMaxWidth(0.4f))
+                TextField(
+                    value = episodeTracker.value,
+                    onValueChange = { episodeTracker.value = it },
+                    backgroundColor = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth(0.5f)
+                )
+            }
+
+            Spacer(modifier = Modifier.preferredHeight(40.dp))
+
+            Row() {
+                Button(onClick = onSave) {
+                    Icon(imageVector = Icons.Default.Check)
+                    Text("Save")
+                }
+
+                Spacer(modifier = Modifier.width(20.dp))
+
+                Button(onClick = onRemove) {
+                    Icon(imageVector = Icons.Default.Delete)
+                    Text("Remove")
+                }
+            }
         }
     }
-
 }
 
 suspend fun parseIMDBLink(imdbUrl: String): TvShow?{
-    if(imdbUrl.isBlank()) return null
-
-    var doc: Document?
-
-    try {
-        doc = Jsoup.connect(imdbUrl).get()
+    if(imdbUrl.isBlank()){
+        return null
     }
-    catch (exception: IOException){
+
+    var doc: Document? = withContext(Dispatchers.IO) {
+        try{
+            Jsoup.connect(imdbUrl).get()
+        }
+        catch (exception: java.lang.IllegalArgumentException){
+            null
+        }
+        catch (exception: IOException){
+            null
+        }
+    }
+
+    if(doc == null){
         return null
     }
 
     val posterUrl = doc.selectFirst("div.poster > a > img").attr("src")
     val title = doc.selectFirst("div.title_wrapper > h1").text()
     val subtext = doc.selectFirst("div.title_wrapper > div").text()
+    val splited_subtext = subtext.split("|")
+
+    val maxSize = splited_subtext.size
+    val selectedSize =
+        when(maxSize){
+            1 -> 0
+            0 -> 0
+            else -> { maxSize - 2 }
+        }
+
+    val genres = splited_subtext[selectedSize].trim()
 
     Log.d("parser", "$posterUrl")
     Log.d("parser", "$title")
     Log.d("parser", "$subtext")
-
-    val genres = subtext.split("|")[0]
+    Log.d("parser", "$genres")
 
     return TvShow(
         id = 0,
