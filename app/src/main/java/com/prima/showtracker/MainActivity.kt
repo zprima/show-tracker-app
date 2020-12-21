@@ -12,8 +12,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,8 +44,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.*
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
@@ -77,6 +74,7 @@ import java.time.ZoneOffset
 // - error handling
 // - make it look cool
 // - ability to change status
+// - file structure
 
 enum class TvShowStatus {
     WATCHING, PAUSED, ENDED, MOVIE
@@ -266,14 +264,14 @@ fun PageShows(navController: NavController, appViewModel: AppViewModel){
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Shows Tracker") },
-                actions = {
-                    Button(
-                        colors = c,
-                        onClick = { navController.navigate(route = PAGES.SHOWS_CREATE) }) {
-                        Icon(imageVector = Icons.Default.AddCircle, tint = Color.White)
+                title = { Text("Show Tracker") },
+                backgroundColor = topAppBarColor(),
+                    actions = {
+                    IconButton(
+                        onClick = { navController.navigate(route = PAGES.SHOWS_CREATE) }
+                    ) {
+                        Icon(imageVector = Icons.Default.AddCircle)
                     }
-
                 }
             )
         },
@@ -343,20 +341,38 @@ fun PageShowsCreate(navController: NavController, appViewModel: AppViewModel){
         }
     }
 
-    Scaffold(){
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("") },
+                backgroundColor = topAppBarColor(),
+                    navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(imageVector = Icons.Default.ArrowBack)
+                    }
+                }
+            )
+        }
+    )  {
         if(isProcessing){
             Text("Processing")
         } else {
 
-            Column(modifier = Modifier.padding(it).padding(10.dp)) {
+            Column(
+                modifier = Modifier.padding(it).padding(10.dp).fillMaxWidth(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
 
                 Text("IMDB Link")
+                Spacer(modifier = Modifier.height(10.dp))
 
                 TextField(value = imdbUrlLink, onValueChange = { imdbUrlLink = it }, placeholder = {
                     Text(
                         "Insert IMDB link here"
                     )
                 })
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Button(onClick = onbtnclick) {
                     Text("Add")
@@ -429,72 +445,86 @@ fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvSh
         }
     }
 
-    if (tvShow.value == null) {
-        Text("loading")
-    } else if (isSaving.value) {
-        Text("Saving")
-    } else {
-        val x = tvShow.value!!
-        val density = AmbientDensity.current.density
-        val linear = Brush.verticalGradient(
-            if (MaterialTheme.colors.isLight) listOf(Color.Transparent, Color.White) else listOf(Color.Transparent, Color.Black),
-            startY = 150f * density
-        )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("") },
+                backgroundColor = topAppBarColor(),
+                    navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(imageVector = Icons.Default.ArrowBack)
+                    }
+                }
+            )
+        }
+    ) {
+        if (tvShow.value == null) {
+            Text("loading")
+        } else if (isSaving.value) {
+            Text("Saving")
+        } else {
+            val x = tvShow.value!!
+            val density = AmbientDensity.current.density
+            val linear = Brush.verticalGradient(
+                if (MaterialTheme.colors.isLight) listOf(Color.Transparent, Color.White) else listOf(Color.Transparent, Color.Black),
+                startY = 150f * density
+            )
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize(1f)) {
-            Box(modifier = Modifier.fillMaxWidth(1f).height(250.dp)) {
-                CoilImage(data = x.imdbPosterUrl, modifier = Modifier.fillMaxHeight(1f).fillMaxWidth(1f))
-                Box(modifier = Modifier.background(linear).fillMaxSize(1f))
-            }
-
-            Text(x.title, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-            Text(x.genres ?: "", style = MaterialTheme.typography.subtitle1)
-
-            Spacer(modifier = Modifier.preferredHeight(30.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.width(250.dp)
-            ) {
-                Text("Season", modifier = Modifier.fillMaxWidth(0.4f))
-                TextField(
-                    value = seasonTracker.value,
-                    onValueChange = { seasonTracker.value = it },
-                    backgroundColor = Color.Transparent,
-                    modifier = Modifier.fillMaxWidth(0.5f)
-                )
-            }
-
-            Spacer(modifier = Modifier.preferredHeight(10.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.width(250.dp)
-            ) {
-                Text("Episode", modifier = Modifier.fillMaxWidth(0.4f))
-                TextField(
-                    value = episodeTracker.value,
-                    onValueChange = { episodeTracker.value = it },
-                    backgroundColor = Color.Transparent,
-                    modifier = Modifier.fillMaxWidth(0.5f)
-                )
-            }
-
-            Spacer(modifier = Modifier.preferredHeight(40.dp))
-
-            Row() {
-                Button(onClick = onSave) {
-                    Icon(imageVector = Icons.Default.Check)
-                    Text("Save")
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize(1f)) {
+                Box(modifier = Modifier.fillMaxWidth(1f).height(250.dp)) {
+                    CoilImage(data = x.imdbPosterUrl, modifier = Modifier.fillMaxHeight(1f).fillMaxWidth(1f))
+                    Box(modifier = Modifier.background(linear).fillMaxSize(1f))
                 }
 
-                Spacer(modifier = Modifier.width(20.dp))
+                Text(x.title, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(x.genres ?: "", style = MaterialTheme.typography.subtitle1)
 
-                Button(onClick = onRemove) {
-                    Icon(imageVector = Icons.Default.Delete)
-                    Text("Remove")
+                Spacer(modifier = Modifier.preferredHeight(30.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.width(250.dp)
+                ) {
+                    Text("Season", modifier = Modifier.fillMaxWidth(0.4f))
+                    TextField(
+                        value = seasonTracker.value,
+                        onValueChange = { seasonTracker.value = it },
+                        backgroundColor = Color.Transparent,
+                        modifier = Modifier.fillMaxWidth(0.5f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.preferredHeight(10.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.width(250.dp)
+                ) {
+                    Text("Episode", modifier = Modifier.fillMaxWidth(0.4f))
+                    TextField(
+                        value = episodeTracker.value,
+                        onValueChange = { episodeTracker.value = it },
+                        backgroundColor = Color.Transparent,
+                        modifier = Modifier.fillMaxWidth(0.5f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.preferredHeight(40.dp))
+
+                Row() {
+                    Button(onClick = onSave) {
+                        Icon(imageVector = Icons.Default.Check)
+                        Text("Save")
+                    }
+
+                    Spacer(modifier = Modifier.width(20.dp))
+
+                    Button(onClick = onRemove) {
+                        Icon(imageVector = Icons.Default.Delete)
+                        Text("Remove")
+                    }
                 }
             }
         }
@@ -524,7 +554,7 @@ suspend fun parseIMDBLink(imdbUrl: String): TvShow?{
 
     val posterUrl = doc.selectFirst("div.poster > a > img").attr("src")
     val title = doc.selectFirst("div.title_wrapper > h1").text()
-    val subtext = doc.selectFirst("div.title_wrapper > div").text()
+    val subtext = doc.selectFirst("div.titleBar > div.title_wrapper > div.subtext").text()
     val splited_subtext = subtext.split("|")
 
     val maxSize = splited_subtext.size
@@ -550,5 +580,14 @@ suspend fun parseIMDBLink(imdbUrl: String): TvShow?{
         genres = genres,
         updatedAt = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC)
     )
+}
+
+@Composable
+fun topAppBarColor(): Color{
+    if(MaterialTheme.colors.isLight){
+        return Color.White
+    }
+
+    return Color.Black
 }
 
