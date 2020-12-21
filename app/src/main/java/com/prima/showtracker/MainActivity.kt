@@ -42,6 +42,7 @@ import org.jsoup.nodes.Document
 import java.sql.Time
 import androidx.activity.viewModels
 import androidx.compose.foundation.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material.icons.filled.*
@@ -50,12 +51,14 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.AmbientContext
 import androidx.compose.ui.platform.AmbientDensity
+import androidx.compose.ui.text.input.KeyboardType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import java.io.IOException
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import com.prima.showtracker.ui.green600
 
 // main page is a list of shows
 // there is and + button that goes to show create page
@@ -79,6 +82,18 @@ import java.time.ZoneOffset
 enum class TvShowStatus {
     WATCHING, PAUSED, ENDED, MOVIE
 }
+
+val TvShowStatusColors = mapOf<Int, Color>(
+    TvShowStatus.WATCHING.ordinal to green600,
+    TvShowStatus.PAUSED.ordinal to Color.Yellow,
+    TvShowStatus.ENDED.ordinal to Color.Red
+)
+
+val tvShowStatusFriendly = mapOf<Int, String>(
+    TvShowStatus.WATCHING.ordinal to "Watching",
+    TvShowStatus.PAUSED.ordinal to "Paused",
+    TvShowStatus.ENDED.ordinal to "Ended"
+)
 
 @Entity(tableName = "tv_shows")
 data class TvShow(
@@ -170,10 +185,6 @@ class AppViewModel(application: Application): AndroidViewModel(application){
     private val database: AppDatabase
     private val repository: TvShowRepository
 
-//    var tvShows: MutableState<List<TvShow>> = mutableStateOf(listOf())
-//        private set
-
-//    var tvShows = MutableStateFlow<List<TvShow>>(listOf())
     lateinit var tvShows: Flow<List<TvShow>>
 
     var tvShow: MutableState<TvShow?> = mutableStateOf(null)
@@ -191,7 +202,6 @@ class AppViewModel(application: Application): AndroidViewModel(application){
     suspend fun add(tvShow: TvShow){
         viewModelScope.launch(Dispatchers.IO){
             repository.add(tvShow = tvShow)
-//            tvShows.value = repository.getAll()
         }
     }
 
@@ -205,7 +215,6 @@ class AppViewModel(application: Application): AndroidViewModel(application){
     suspend fun remove(tvShow: TvShow){
         viewModelScope.launch {
             repository.remove(tvShow)
-//            tvShows.value = repository.getAll()
         }
     }
 
@@ -213,7 +222,6 @@ class AppViewModel(application: Application): AndroidViewModel(application){
         viewModelScope.launch {
             Log.d("parser", "${tvShow.seasonTracker} / ${tvShow.id}")
             repository.update(tvShow)
-//            tvShows.value = repository.getAll()
         }
     }
 }
@@ -226,7 +234,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             ShowTrackerTheme(darkTheme = true) {
-                // A surface container using the 'background' color from the theme
                 Surface(color = MaterialTheme.colors.background) {
                     App(appViewModel)
                 }
@@ -266,11 +273,11 @@ fun PageShows(navController: NavController, appViewModel: AppViewModel){
             TopAppBar(
                 title = { Text("Show Tracker") },
                 backgroundColor = topAppBarColor(),
-                    actions = {
+                actions = {
                     IconButton(
-                        onClick = { navController.navigate(route = PAGES.SHOWS_CREATE) }
+                        onClick = { navController.navigate(route = PAGES.SHOWS_CREATE) },
                     ) {
-                        Icon(imageVector = Icons.Default.AddCircle)
+                        Icon(imageVector = Icons.Default.AddCircle, tint = MaterialTheme.colors.primary)
                     }
                 }
             )
@@ -294,7 +301,10 @@ fun ShowItem(modifier: Modifier, tvShow: TvShow, onEdit: () -> Unit){
 
         CoilImage(
             data = tvShow.imdbPosterUrl,
-            modifier = Modifier.preferredHeight(150.dp).clip(RoundedCornerShape(10.dp)),
+            modifier = Modifier
+                .preferredHeight(150.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onEdit),
             alignment = Alignment.TopStart
         )
 
@@ -308,11 +318,15 @@ fun ShowItem(modifier: Modifier, tvShow: TvShow, onEdit: () -> Unit){
             Text("S: ${tvShow.seasonTracker}")
             Text("E: ${tvShow.episodeTracker}")
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Button(onClick = onEdit) {
-                Text("Edit")
-            }
+//            Spacer(modifier = Modifier.height(10.dp))
+//
+//            Text(tvShowStatusFriendly[tvShow.status]!!,
+//                fontSize = 10.sp,
+//                modifier = Modifier
+//                    .clip(RoundedCornerShape(10.dp))
+//                    .background(TvShowStatusColors[tvShow.status]!!)
+//                    .padding(5.dp)
+//            )
         }
     }
 }
@@ -346,7 +360,7 @@ fun PageShowsCreate(navController: NavController, appViewModel: AppViewModel){
             TopAppBar(
                 title = { Text("") },
                 backgroundColor = topAppBarColor(),
-                    navigationIcon = {
+                navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(imageVector = Icons.Default.ArrowBack)
                     }
@@ -450,7 +464,7 @@ fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvSh
             TopAppBar(
                 title = { Text("") },
                 backgroundColor = topAppBarColor(),
-                    navigationIcon = {
+                navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(imageVector = Icons.Default.ArrowBack)
                     }
@@ -491,7 +505,10 @@ fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvSh
                         value = seasonTracker.value,
                         onValueChange = { seasonTracker.value = it },
                         backgroundColor = Color.Transparent,
-                        modifier = Modifier.fillMaxWidth(0.5f)
+                        modifier = Modifier.fillMaxWidth(0.5f),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        )
                     )
                 }
 
@@ -507,7 +524,10 @@ fun PageShowsEdit(navController: NavController, appViewModel: AppViewModel, tvSh
                         value = episodeTracker.value,
                         onValueChange = { episodeTracker.value = it },
                         backgroundColor = Color.Transparent,
-                        modifier = Modifier.fillMaxWidth(0.5f)
+                        modifier = Modifier.fillMaxWidth(0.5f),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        )
                     )
                 }
 
@@ -552,20 +572,36 @@ suspend fun parseIMDBLink(imdbUrl: String): TvShow?{
         return null
     }
 
-    val posterUrl = doc.selectFirst("div.poster > a > img").attr("src")
-    val title = doc.selectFirst("div.title_wrapper > h1").text()
-    val subtext = doc.selectFirst("div.titleBar > div.title_wrapper > div.subtext").text()
-    val splited_subtext = subtext.split("|")
+    var posterUrl: String? = null
+    var title: String? = null
+    var subtext: String? = null
+    var genres: String? = null
 
-    val maxSize = splited_subtext.size
-    val selectedSize =
-        when(maxSize){
-            1 -> 0
-            0 -> 0
-            else -> { maxSize - 2 }
-        }
+    if(imdbUrl.contains("m.imdb.com")){
+        // handle mobile
+        posterUrl = doc.selectFirst("#titleOverview > div.media.titlemain__overview-media--mobile > a > img").attr("src")
+        title = doc.selectFirst("#titleOverview > div.media.overview-top > div > h1").text()
+        subtext = doc.selectFirst("#titleOverview > div.media.overview-top > div > p > span.itemprop").text()
+        genres = subtext
 
-    val genres = splited_subtext[selectedSize].trim()
+    } else {
+        // desktop
+        posterUrl = doc.selectFirst("div.poster > a > img").attr("src")
+        title = doc.selectFirst("div.title_wrapper > h1").text()
+        subtext = doc.selectFirst("div.titleBar > div.title_wrapper > div.subtext").text()
+
+        val splited_subtext = subtext.split("|")
+
+        val maxSize = splited_subtext.size
+        val selectedSize =
+            when(maxSize){
+                1 -> 0
+                0 -> 0
+                else -> { maxSize - 2 }
+            }
+
+        genres = splited_subtext[selectedSize].trim()
+    }
 
     Log.d("parser", "$posterUrl")
     Log.d("parser", "$title")
